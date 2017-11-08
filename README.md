@@ -10,6 +10,7 @@ I have done a fair amount offline; the starting point now is:
  - all community chest and chance cards are included (though a few are yet to be fully functioning);
  - all rent amounts are included in the set-up, even though house purchase isn't yet built in;
  - three-turn jail limit is functioning.
+ 
 Things yet to be introduced/improved on the logical/gameplay are:
  - roll doubles allows roll again, and then three doubles sends to jail;
  - house purchasing;
