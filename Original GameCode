@@ -20,43 +20,105 @@ propertyColours = [(200,0,0),(0,100,200),(0,200,0),(230,200,0),(150,150,150),(10
 
 font = pygame.font.SysFont(None,20)
 
+## all constants and display settings before this point
+##############################################################################################################################
+
+#### INTRODUCTION to explain what terms mean
+
+## currentPlayerIndex is the identity of the player whose turn it currently is. This is a value between 0 and numberOfPlayers-1 (inclusive).
+
+## currentPosition is the position of the current player's piece on the board. This is a value between 0 and 39 (inclusive).
+
+## jailIndex is a list with element jailIndex[playeri] being the number of turns for which playeri has been in jail (0 if not in jail).
+
+## playerCash is a list with element playerCash[playeri] being the cash belonging to playeri.
+
+## startPosition is the position in which the current player started the roll - this helps to check whether the player passed Go.
+
+## properties is a list with 40-element indexed by the spaces on the board. The element properties[boardSpacei] is determined by the type of space:
+## for all boardSpacei in range(0,40):
+##     properties[boardSpacei][0] is the type of square: "space", "card", "tax", "property", "utility", "station"
+##     properties[boardSpacei][1] is the name of the square, e.g. "Old Kent Road", "Chance", "Water Works", "Jail"
+##     if properties[boardSpacei][0] == "property":
+##         properties[boardSpacei][2] = bool(owned)
+##         properties[boardSpacei][3] = owner identity number (if owned, else any player number)
+##         properties[boardSpacei][4] = cost of property
+##         properties[boardSpacei][5] = bool(mortgaged)
+##         properties[boardSpacei][6] = list of rent values [0house, 1house, 2house, 3house, 4house, 5house (hotel)]
+##         properties[boardSpacei][7] = number of houses
+##     if properties[boardSpacei][0] == "utility" or "station":
+##         properties[boardSpacei][2] = bool(owned)
+##         properties[boardSpacei][3] = owner identity number (if owned, else any player number)
+##         properties[boardSpacei][4] = cost of property
+##         properties[boardSpacei][5] = bool(mortgaged)
+##     if properties[boardSpacei][0] == "tax":
+##         properties[boardSpacei][2] = tax cost
+##     if properties[boardSpacei][0] == "space" or "card" then there is no additional elements to this list.
+
+## diceRoll is the total rolled by the player, used for rent if the player landed on one of the utilities.
+
+## communityChestDeck and chanceDeck consist of numbers in the range 0 to 15 inclusive which index community chest and chance cards yet unused.
+
+#####################################################################################################################################
+
+#### FUNCTIONS for logical gameplay
+
+## diceRoll function for rolling dice and moving the piece the required distance. This includes dealing with whether the player begins in jail.
 def diceRoll(currentPlayerIndex,currentPosition,jailIndex,playerCash):
+	# roll two dice
     dice1 = random.choice([1,2,3,4,5,6])
     dice2 = random.choice([1,2,3,4,5,6])
+	# take their total
     diceRoll = dice1 + dice2
-    dice = diceRoll
+	# if not in jail, move that far
     if jailIndex[currentPlayerIndex] == 0:
         currentPosition += diceRoll
         currentPosition = currentPosition%40
+	# elif in jail for one or two turns
     elif jailIndex[currentPlayerIndex] in [1,2]:
+		# if rolled doubles, move that far and freed from jail
         if dice1 == dice2:
             currentPosition += diceRoll
             currentPosition = currentPosition%40
             jailIndex[currentPlayerIndex] = 0
+		# otherwise, stay in jail, and register the extra turn in jail
         else:
             jailIndex[currentPlayerIndex] += 1
             print("Player ",currentPlayerIndex," stayed in jail")
+	# elif in jail for three turns
     elif jailIndex[currentPlayerIndex] == 3:
+		# if rolled doubles, move that far
         if dice1 == dice2:
             currentPosition += diceRoll
             currentPosition = currentPosition%40
+		# otherwise, pay to get out and move that far
         else:
             playerCash[currentPlayerIndex] -= 50
             currentPosition += diceRoll
             currentPosition = currentPosition%40
             print("Player ",currentPlayerIndex," paid 50 coins to gets out of jail")
+		# either way, freed from jail
         jailIndex[currentPlayerIndex] = 0
+	# save dice roll as appropriate name
+	dice = diceRoll
     return currentPosition, jailIndex, playerCash, dice
 
+## goToJail function to test whether player lands on space 30 ("Go To Jail"), and result if so
 def goToJail(currentPlayerIndex,currentPosition,jailIndex):
+	# if player lands on "Go To Jail"
     if currentPosition == 30:
+		# go to space 10 ("Jail")
         print("Go To Jail")
         currentPosition = 10
+		# imprison
         jailIndex[currentPlayerIndex] = 1
     return currentPosition, jailIndex
 
+## go function to test whether player lands on or passes space 0 ("Go"), and result if so
 def go(playerCash,currentPlayerIndex,currentPosition,startPosition):
+	# if player's position after rolling is a lower index than that of the starting position
     if currentPosition < startPosition:
+		# player given 200 coins
         playerCash[currentPlayerIndex] += 200
         print("Player ",currentPlayerIndex," passed Go and recieved 200 coins")
     return playerCash
