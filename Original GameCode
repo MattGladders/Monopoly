@@ -123,55 +123,67 @@ def go(playerCash,currentPlayerIndex,currentPosition,startPosition):
         print("Player ",currentPlayerIndex," passed Go and recieved 200 coins")
     return playerCash
 
+## rent function to calculate if rent is owed, how much is owed, and then make payment / deal with bankruptcy
 def rent(currentPosition,currentPlayerIndex,playerCash,properties,diceRoll):
+	# rent is paid on these property types
     if properties[currentPosition][0] in ["property","utility","station"]:
+		# rent is paid if the property is owned
         if properties[currentPosition][2] == True:
+			# calculate the amount of rent
             rentValue = 0
-            if properties[currentPosition][0] == "property":
-                playerOwed = properties[currentPosition][3]
-                rentValue = properties[currentPosition][6][properties[currentPosition][7]]
-            elif properties[currentPosition][0] == "utility":
-                if properties[currentPosition][2] == True:
-                    playerOwed = properties[currentPosition][3]
-                    if currentPosition == 12:
-                        if properties[28][2] == True and properties[28][3] == playerOwed:
-                            rentValue = 10*diceRoll
-                        else:
-                            rentValue = 4*diceRoll
-                    else:
-                        if properties[12][2] == True and properties[12][3] == playerOwed:
-                            rentValue = 10*diceRoll
-                        else:
-                            rentValue = 4*diceRoll
-            elif properties[currentPosition][0] == "station":
-                if properties[currentPosition][2] == True:
-                    playerOwed = properties[currentPosition][3]
-                    numberOfStations = -1
-                    for index in range(0,4):
-                        if properties[10*index + 5][2] == True and properties[10*index + 5][3] == playerOwed:
-                            numberOfStations += 1
-                    rentValue = 25*(2**numberOfStations)
-            if rentValue != 0:
-                if playerOwed != currentPlayerIndex:
-                    if playerCash[currentPlayerIndex] >= rentValue:
-                        playerCash[currentPlayerIndex] -= rentValue
-                        playerCash[playerOwed] += rentValue
-                        print("Player ",currentPlayerIndex, " paid ",rentValue," coins to player ",playerOwed," in rent")
-                    else:
-                        print("PLAYER",currentPlayerIndex, " IS BANKRUPT!")
-                        print("Player ",playerOwed, " received the remaining money and properties")
-                        playerCash[playerOwed] += playerCash[currentPlayerIndex]
-                        playerCash[currentPlayerIndex] = -1
-                        for Property in properties:
-                            if Property[0] in ["property","utility","station"]:
-                                if Property[2] == True and Property[3] == currentPlayerIndex:
-                                    Property[3] = playerOwed
+			playerOwed = properties[currentPosition][3]
+			# rent only if a different owner, and property not mortgaged
+			if playerOwed != currentPlayerIndex and properties[currentPosition][5] == False:
+				# rent value for property is based on the number of houses on this property
+            	if properties[currentPosition][0] == "property":
+                	rentValue = properties[currentPosition][6][properties[currentPosition][7]]
+				# rent value for utility is based on whether other utility is owned by the same player
+            	elif properties[currentPosition][0] == "utility":
+                	if currentPosition == 12:
+                    	if properties[28][2] == True and properties[28][3] == playerOwed:
+                        	rentValue = 10*diceRoll
+                    	else:
+                        	rentValue = 4*diceRoll
+                	else: # currentPosition == 28
+                    	if properties[12][2] == True and properties[12][3] == playerOwed:
+                        	rentValue = 10*diceRoll
+                    	else:
+                        	rentValue = 4*diceRoll
+				# rent value for station is based on how many other stations are owned by the same player
+            	else: # properties[currentPosition][0] == "station"
+                	numberOfStations = -1
+                	for index in range(0,4):
+                	    if properties[10*index + 5][2] == True and properties[10*index + 5][3] == playerOwed:
+                    	    numberOfStations += 1
+					# factoring the station in current position, numberOfStations = 0. Then any extra stations will give a positive contribution
+                	rentValue = 25*(2**numberOfStations)
+			if rentValue != 0:
+				# if the player can afford the rent, he/she will pay the rent
+            	if playerCash[currentPlayerIndex] >= rentValue:
+                    playerCash[currentPlayerIndex] -= rentValue
+                    playerCash[playerOwed] += rentValue
+                    print("Player ",currentPlayerIndex, " paid ",rentValue," coins to player ",playerOwed," in rent")
+				# otherwise, the player goes bankrupt, and all remaining money and property goes to the player owed
+                else:
+                    print("PLAYER",currentPlayerIndex, " IS BANKRUPT!")
+                    print("Player ",playerOwed, " received the remaining money and properties")
+					# cash is transferred
+                    playerCash[playerOwed] += playerCash[currentPlayerIndex]
+                    playerCash[currentPlayerIndex] = -1
+                    for Property in properties:
+                        if Property[0] in ["property","utility","station"]:
+							# if player owns this property, then it goes to the player owed
+                            if Property[2] == True and Property[3] == currentPlayerIndex:
+                                Property[3] = playerOwed
     return playerCash,properties
 
+# purchase function purchases property if it is currently unowned
 def purchase(currentPosition,currentPlayerIndex,playerCash,properties):
     if properties[currentPosition][0] in ["property","station","utility"]:
+		# if it is unowned
         if properties[currentPosition][2] == False:
             cost = properties[currentPosition][4]
+			# if the player can afford it, then the player buys it
             if playerCash[currentPlayerIndex] >= cost:
                 playerCash[currentPlayerIndex] -= cost
                 properties[currentPosition][2] = True
@@ -179,6 +191,7 @@ def purchase(currentPosition,currentPlayerIndex,playerCash,properties):
                 print("Player ",currentPlayerIndex," bought ",properties[currentPosition][1]," for ",cost," coins")
     return playerCash, properties
 
+# tax function to calculate whether tax is owed, how much tax is owed, and whether the player can afford it or goes bankrupt as a result
 def tax(currentPosition,currentPlayerIndex,playerCash,properties):
     if properties[currentPosition][0] == "tax":
         cost = properties[currentPosition][2]
