@@ -17,6 +17,7 @@ Things yet to be introduced/improved on the logical/gameplay are:
  - mortgaging;
  - trading;
  - choice of strategies - property purchase choices, trading, houses
+
 Things yet to be introduced/improved on the layout are numerous!
 
 I am going to start out by improving programmer readability first; I hope that by adding comments and notes more people will be able to read and understand my code.
