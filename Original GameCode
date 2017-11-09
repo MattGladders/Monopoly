@@ -20,82 +20,166 @@ propertyColours = [(200,0,0),(0,100,200),(0,200,0),(230,200,0),(150,150,150),(10
 
 font = pygame.font.SysFont(None,20)
 
-def diceRoll(currentPlayerIndex,currentPosition,jailIndex,playerCash):
+## all constants and display settings before this point
+##############################################################################################################################
+
+#### INTRODUCTION to explain what terms mean
+
+## currentPlayerIndex is the identity of the player whose turn it currently is. This is a value between 0 and numberOfPlayers-1 (inclusive).
+
+## currentPosition is the position of the current player's piece on the board. This is a value between 0 and 39 (inclusive).
+
+## jailIndex is a list with element jailIndex[playeri] being the number of turns for which playeri has been in jail (0 if not in jail).
+
+## playerCash is a list with element playerCash[playeri] being the cash belonging to playeri.
+
+## startPosition is the position in which the current player started the roll - this helps to check whether the player passed Go.
+
+## properties is a list with 40-element indexed by the spaces on the board. The element properties[boardSpacei] is determined by the type of space:
+## for all boardSpacei in range(0,40):
+##     properties[boardSpacei][0] is the type of square: "space", "card", "tax", "property", "utility", "station"
+##     properties[boardSpacei][1] is the name of the square, e.g. "Old Kent Road", "Chance", "Water Works", "Jail"
+##     if properties[boardSpacei][0] == "property":
+##         properties[boardSpacei][2] = bool(owned)
+##         properties[boardSpacei][3] = owner identity number (if owned, else any player number)
+##         properties[boardSpacei][4] = cost of property
+##         properties[boardSpacei][5] = bool(mortgaged)
+##         properties[boardSpacei][6] = list of rent values [0house, 1house, 2house, 3house, 4house, 5house (hotel)]
+##         properties[boardSpacei][7] = number of houses
+##     if properties[boardSpacei][0] == "utility" or "station":
+##         properties[boardSpacei][2] = bool(owned)
+##         properties[boardSpacei][3] = owner identity number (if owned, else any player number)
+##         properties[boardSpacei][4] = cost of property
+##         properties[boardSpacei][5] = bool(mortgaged)
+##     if properties[boardSpacei][0] == "tax":
+##         properties[boardSpacei][2] = tax cost
+##     if properties[boardSpacei][0] == "space" or "card" then there is no additional elements to this list.
+
+## diceRoll is the total rolled by the player, used for rent if the player landed on one of the utilities.
+
+## communityChestDeck and chanceDeck consist of numbers in the range 0 to 15 inclusive which index community chest and chance cards yet unused.
+
+## When a player is bankrupt (and therefore out of the game), their cash is set to -1.
+
+#####################################################################################################################################
+
+#### FUNCTIONS for logical gameplay
+
+#### The diceroll function will control the initial movement caused by the dice, but also needs to consider whether the player starts in jail, and if so how long they have been in
+def diceRoll(currentPlayerIndex,currentPosition,jailIndex,playerCash,properties):
     dice1 = random.choice([1,2,3,4,5,6])
     dice2 = random.choice([1,2,3,4,5,6])
     diceRoll = dice1 + dice2
-    dice = diceRoll
     if jailIndex[currentPlayerIndex] == 0:
+##        The player is not in jail, so moves around the board according to the roll
         currentPosition += diceRoll
         currentPosition = currentPosition%40
     elif jailIndex[currentPlayerIndex] in [1,2]:
+##        This is the player's first or second roll in jail
         if dice1 == dice2:
+##            The player rolled doubles, so is released and moves around the board according to the roll
             currentPosition += diceRoll
             currentPosition = currentPosition%40
             jailIndex[currentPlayerIndex] = 0
         else:
+##            The player did not roll doubles, so remains in jail for another turn
             jailIndex[currentPlayerIndex] += 1
             print("Player ",currentPlayerIndex," stayed in jail")
     elif jailIndex[currentPlayerIndex] == 3:
+##        This is the player's third roll in jail
         if dice1 == dice2:
+##            The player rolled doubles so is released (without charge) and moves around the board according to the roll
             currentPosition += diceRoll
             currentPosition = currentPosition%40
+            jailIndex[currentPlayerIndex] = 0
         else:
-            playerCash[currentPlayerIndex] -= 50
-            currentPosition += diceRoll
-            currentPosition = currentPosition%40
-            print("Player ",currentPlayerIndex," paid 50 coins to gets out of jail")
-        jailIndex[currentPlayerIndex] = 0
-    return currentPosition, jailIndex, playerCash, dice
+##            The player did not roll doubles so is charged 50 coins for release, or bankrupt
+            if playerCash[currentPlayerIndex] >= 50:
+##                The player can afford the charge, so pays the charge, is released and moves around the board according to the roll
+                playerCash[currentPlayerIndex] -= 50
+                currentPosition += diceRoll
+                currentPosition = currentPosition%40
+                print("Player ",currentPlayerIndex," paid 50 coins to gets out of jail")
+                jailIndex[currentPlayerIndex] = 0
+            else:
+##                The player cannot afford the charge, so is declared bankrupt and remaining money and properties are returned to the bank
+                print("PLAYER ",currentPlayerIndex, " IS BANKRUPT!")
+                print("The bank received all cash and properties owned by player ",currentPlayerIndex)
+                playerCash[currentPlayerIndex] = -1
+                for Property in properties:
+                    if Property[0] in ["property","utility","station"] and Property[2] == True and Property[3] == currentPlayerIndex:
+                        Property[2] = False
+##    return the dice rolls to determine further rolls (if player rolled doubles) or rent (if player landed on utilities)
+    dice = (dice1,dice2)
+    return currentPosition, jailIndex, playerCash, properties, dice
 
+#### The go function will award the player 200 coins if they passed "Go"
+def go(playerCash,currentPlayerIndex,currentPosition,startPosition):
+    if currentPosition < startPosition:
+##        The player position has a lower index, so either the player has passed "Go" or has moved backwards
+##        Moving backwards will only occur by the "Go to Jail" space or by a card, but the "Go" function occurs prior to these actions, so need not be considered
+        playerCash[currentPlayerIndex] += 200
+        print("Player ",currentPlayerIndex," passed Go and recieved 200 coins")
+    return playerCash
+
+#### The goToJail function will send a player to jail if they land on the "Go to Jail" space, and increase their jailIndex element
 def goToJail(currentPlayerIndex,currentPosition,jailIndex):
     if currentPosition == 30:
+##        If the player landed on "Go to Jail"
         print("Go To Jail")
         currentPosition = 10
         jailIndex[currentPlayerIndex] = 1
     return currentPosition, jailIndex
 
-def go(playerCash,currentPlayerIndex,currentPosition,startPosition):
-    if currentPosition < startPosition:
-        playerCash[currentPlayerIndex] += 200
-        print("Player ",currentPlayerIndex," passed Go and recieved 200 coins")
-    return playerCash
-
-def rent(currentPosition,currentPlayerIndex,playerCash,properties,diceRoll):
+#### The rent function will determine whether rent is owed by the player on the current position, and if so how much the rent is and to whom
+#### The player will then either pay the rent, or deal with the resulting bankruptcy
+def rent(currentPosition,currentPlayerIndex,playerCash,properties,dice):
     if properties[currentPosition][0] in ["property","utility","station"]:
+##        The current position is a space on which rent may be owed
         if properties[currentPosition][2] == True:
+##            The current position is owned, and therefore will have a rent value
+##            Begin with a rent value of 0, and then adapt this if the new rent is calculated (dependence on mortgaging, which is not yet included)
             rentValue = 0
+            playerOwed = properties[currentPosition][3]
             if properties[currentPosition][0] == "property":
-                playerOwed = properties[currentPosition][3]
+##                The current position is a property, and rent value is calculated by the number of houses
                 rentValue = properties[currentPosition][6][properties[currentPosition][7]]
             elif properties[currentPosition][0] == "utility":
-                if properties[currentPosition][2] == True:
-                    playerOwed = properties[currentPosition][3]
-                    if currentPosition == 12:
-                        if properties[28][2] == True and properties[28][3] == playerOwed:
-                            rentValue = 10*diceRoll
-                        else:
-                            rentValue = 4*diceRoll
+##                The current position is a utility, and rent value is calculated dependent on whether the other utility is owned by the same player
+                diceRoll = dice[0] + dice[1]
+                if currentPosition == 12:
+##                    The current position is the "Electric Company" space (12), and consider the ownership of the "Water Works" space (28)
+                    if properties[28][2] == True and properties[28][3] == playerOwed:
+                        rentValue = 10*diceRoll
                     else:
-                        if properties[12][2] == True and properties[12][3] == playerOwed:
-                            rentValue = 10*diceRoll
-                        else:
-                            rentValue = 4*diceRoll
+                        rentValue = 4*diceRoll
+                else:
+##                    The current position is the "Water Works" space (28), and consider the ownership of the "Electric Company" space (12)
+                    if properties[12][2] == True and properties[12][3] == playerOwed:
+                        rentValue = 10*diceRoll
+                    else:
+                        rentValue = 4*diceRoll
             elif properties[currentPosition][0] == "station":
-                if properties[currentPosition][2] == True:
-                    playerOwed = properties[currentPosition][3]
-                    numberOfStations = -1
-                    for index in range(0,4):
-                        if properties[10*index + 5][2] == True and properties[10*index + 5][3] == playerOwed:
-                            numberOfStations += 1
-                    rentValue = 25*(2**numberOfStations)
+##                The current position is a station, and rent value is calculated dependent on whether the other stations are owned by the same player
+##                So as not to consider separate cases for stations, set numberOfStations = -1 and then the current position will contribute +1, making a running total of 0 other stations,
+##                then extra stations will make the positive contribution
+                numberOfStations = -1
+                for index in range(0,4):
+                    if properties[10*index + 5][2] == True and properties[10*index + 5][3] == playerOwed:
+                        numberOfStations += 1
+##                Rent value is 25, 50, 100, or 200, dependent on number of stations owned
+                rentValue = 25*(2**numberOfStations)
             if rentValue != 0:
+##                The property is not mortgaged
                 if playerOwed != currentPlayerIndex:
+##                    The current player is not the owner
                     if playerCash[currentPlayerIndex] >= rentValue:
+##                        The current player can afford the rent, so pays the rent to the player owed
                         playerCash[currentPlayerIndex] -= rentValue
                         playerCash[playerOwed] += rentValue
                         print("Player ",currentPlayerIndex, " paid ",rentValue," coins to player ",playerOwed," in rent")
                     else:
+##                        The current player can not afford the rent, so is declared bankrupt, and remaining money and properties are returned to the bank
                         print("PLAYER",currentPlayerIndex, " IS BANKRUPT!")
                         print("Player ",playerOwed, " received the remaining money and properties")
                         playerCash[playerOwed] += playerCash[currentPlayerIndex]
@@ -106,24 +190,33 @@ def rent(currentPosition,currentPlayerIndex,playerCash,properties,diceRoll):
                                     Property[3] = playerOwed
     return playerCash,properties
 
+#### The purchase function will determine whether the current position can be bought (correct type and available) and whether the player can afford the cost. If so, the player buys is
 def purchase(currentPosition,currentPlayerIndex,playerCash,properties):
     if properties[currentPosition][0] in ["property","station","utility"]:
+##        The current position is a space which can be bought
         if properties[currentPosition][2] == False:
+##            The current position is unowned
             cost = properties[currentPosition][4]
             if playerCash[currentPlayerIndex] >= cost:
+##                The player can afford the cost, so buys the property
                 playerCash[currentPlayerIndex] -= cost
                 properties[currentPosition][2] = True
                 properties[currentPosition][3] = currentPlayerIndex
                 print("Player ",currentPlayerIndex," bought ",properties[currentPosition][1]," for ",cost," coins")
     return playerCash, properties
 
+#### The tax function will determine whether the current position is a tax type space and whether the player can afford the cost. If so, the tax is paid. If not, the player is declared
+#### bankrupt and the cash and properties are returned to the bank
 def tax(currentPosition,currentPlayerIndex,playerCash,properties):
     if properties[currentPosition][0] == "tax":
+##        The current position is a tax space
         cost = properties[currentPosition][2]
         if playerCash[currentPlayerIndex] >= cost:
+##            The player can afford the tax, so pays the cost to the bank
             playerCash[currentPlayerIndex] -= cost
             print("Player ",currentPlayerIndex, " has paid ",cost," coins to the bank in tax")
         else:
+##            The player cannot afford the tax, so is declared bankrupt and all properties and money are returned to the bank
             print("PLAYER ",currentPlayerIndex, " IS BANKRUPT!")
             print("The bank received all cash and properties owned by player ",currentPlayerIndex)
             playerCash[currentPlayerIndex] = -1
@@ -135,160 +228,216 @@ def tax(currentPosition,currentPlayerIndex,playerCash,properties):
 ##def house(playerPositions,currentPlayerIndex,playerCash,properties):
 ##    return playerCash, properties
 
+#### the communityChest function will deal with the many different results of landing on a community chest space, and remove that card from the deck, and reshuffle if necessary
 def communityChest(currentPlayerIndex,currentPosition,playerCash,properties,communityChestDeck):
-    if properties[currentPosition][0] == "card":
-        if properties[currentPosition][1] == "Community Chest":
-            cardNumber = random.choice(communityChestDeck)
-            print("Player ",currentPlayerIndex," picked up a community chest")
+    if properties[currentPosition][1] == "Community Chest":
+##        The current position is a community chest space
+        cardNumber = random.choice(communityChestDeck)
+##        Pick a random card from the deck (equivalent of shuffling), identified by a cardNumber in range(0,16)
+        print("Player ",currentPlayerIndex," picked up a community chest")
+        if cardNumber == 0:
+            print("Advance to Go")
+##            Send player to "Go" and collect 200 coins
+            currentPosition = 0
+            playerCash[currentPlayerIndex] += 200
+            print("Player ",currentPlayerIndex," passed Go and recieved 200 coins")
+        elif cardNumber == 1:
+##            Send player back to Old Kent Road
+            print("Go back to Old Kent Road")
+            currentPosition = 1
+        elif cardNumber == 2:
+##            Send player to Jail. goToJail function occurs after communityChest in gameLoop, so send player to "Go to Jail" space is adequate
+            print("Go to Jail. Move directly to jail. Do not pass Go. Do not collect 200 coins")
+            currentPosition = 30
+        elif cardNumber in [3,4,5]:
+##            These are all fees/fines to the bank, so may result in bankruptcy.
+##            Determine the amount of money owed to the bank
+            if cardNumber == 3:
+                print("Pay hospital 100 coins")
+                cashOwed = 100
+            elif cardNumber == 4:
+                print("Doctor's fee. Pay 50 coins")
+                cashOwed = 50
+            else:
+                print("Pay your insurance premium. 50 coins")
+                cashOwed = 50
+            if playerCash[currentPlayerIndex] >= cashOwed:
+##                The player can afford the fee, so pays the money to the bank
+                playerCash[currentPlayerIndex] -= cashOwed
+                print("Player ",currentPlayerIndex, " has paid ",cashOwed," coins to the bank")
+            else:
+##                The player cannot afford the fee, so is declared bankrupt and all money and properties are returned to the bank
+                print("PLAYER ",currentPlayerIndex, " IS BANKRUPT!")
+                print("The bank received all cash and properties owned by player ",currentPlayerIndex)
+                playerCash[currentPlayerIndex] = -1
+                for Property in properties:
+                    if Property[0] in ["property","utility","station"] and Property[2] == True and Property[3] == currentPlayerIndex:
+                        Property[2] = False
+        elif cardNumber == 6:
+##            Player receives 200 coins
+            print("Bank error in your favour. Collect 200 coins")
+            playerCash[currentPlayerIndex] += 200
+        elif cardNumber == 7:
+##            Player receives 100 coins
+            print("Annuity matures. Collect 100 coins")
+            playerCash[currentPlayerIndex] += 100
+        elif cardNumber == 8:
+##            Player receives 100 coins
+            print("You inherit 100 coins")
+            playerCash[currentPlayerIndex] += 100
+        elif cardNumber == 9:
+##            Player receives 50 coins
+            print("From sale of stock you get 50 coins")
+            playerCash[currentPlayerIndex] += 50
+        elif cardNumber == 10:
+##            Player receives 25 coins
+            print("Receive interest on 7% preference shares: 25 coins")
+            playerCash[currentPlayerIndex] += 25
+        elif cardNumber == 11:
+##            Player receives 20 coins
+            print("Income tax refund. Collect 20 coins")
+            playerCash[currentPlayerIndex] += 20
+        elif cardNumber == 12:
+##            Player receives 10 coins
+            print("You have won second prize in a beauty contest. Collect 10 coins")
+            playerCash[currentPlayerIndex] += 10
+        elif cardNumber == 13:
+####            To be completed
+            print("It is your birthday. Collect 10 coins from each player")
+##                playerCash[currentPlayerIndex] += 10
+        elif cardNumber == 14:
+####            To be completed
+            print("Get out of jail free. This card may be kept until needed or sold")
+        else:
+####            To be completed
+            print("Take a Chance")
+##                
+        communityChestDeck.remove(cardNumber)
+##        Remove card which has been resolved. If the deck is now empty, refill with the discard pile.
+        if communityChestDeck == []:
+            for i in range(0,16):
+                communityChestDeck.append(i)
+    return currentPosition, playerCash, properties, communityChestDeck
+
+#### the chance function will deal with the many different results of landing on a chance space, and remove that card from the deck, and reshuffle if necessary
+def chance(currentPlayerIndex,currentPosition,playerCash,properties,chanceDeck):
+    if properties[currentPosition][1] == "Chance":
+##        The current position is a community chest space
+        cardNumber = random.choice(chanceDeck)
+##        Pick a random card from the deck (equivalent of shuffling), identified by a cardNumber in range(0,16)
+        print("Player ",currentPlayerIndex," picked up a chance")
+        if cardNumber in [0,1,2,3,4,5]:
             if cardNumber == 0:
                 print("Advance to Go")
+##                Send player to Go (0) and collect 200 coins
                 currentPosition = 0
                 playerCash[currentPlayerIndex] += 200
                 print("Player ",currentPlayerIndex," passed Go and recieved 200 coins")
             elif cardNumber == 1:
-                print("Go back to Old Kent Road")
-                currentPosition = 1
+##                Send player back three spaces
+                print("Go back three spaces")
+                currentPosition -= 3
             elif cardNumber == 2:
-                print("Go to Jail. Move directly to jail. Do not pass Go. Do not collect 200 coins")
-                currentPosition = 30
-            elif cardNumber in [3,4,5]:
-                if cardNumber == 3:
-                    print("Pay hospital 100 coins")
-                    cashOwed = 100
-                elif cardNumber == 4:
-                    print("Doctor's fee. Pay 50 coins")
-                    cashOwed = 50
+##                Send player to Pall Mall (11), and calculate whether this has passed Go
+                print("Advance to Pall Mall. If you pass Go, collect 200 coins")
+                if currentPosition > 11:
+                    playerCash[currentPlayerIndex] += 200
+                currentPosition = 11
+            elif cardNumber == 3:
+##                Send player to Marylebone Station (15), and calculate whether this has passed Go
+                print("Take a trip to Marylebone Station. If you pass Go, collect 200 coins")
+                if currentPosition > 15:
+                    playerCash[currentPlayerIndex] += 200
+                currentPosition = 15
+            elif cardNumber == 4:
+##                Send player to Trafalgar Square (24), and calculate whether this has passed Go
+                print("Advance to Trafalgar Square. If you pass Go, collect 200 coins")
+                if currentPosition > 24:
+                    playerCash[currentPlayerIndex] += 200
+                currentPosition = 24
+            elif cardNumber == 5:
+##                Send player to Mayfair (39)
+                print("Advance to Mayfair")
+                currentPosition = 39
+        elif cardNumber == 6:
+##            Send player to Jail. goToJail function occurs after communityChest in gameLoop, so send player to "Go to Jail" space is adequate
+            print("Go to Jail. Move directly to jail. Do not pass Go. Do not collect 200 coins")
+            currentPosition = 30        
+        elif cardNumber in [7,8,9,10,11]:
+##            These are fees/fines/charges to the bank, so may result in bankruptcy
+            if cardNumber in [7,8]:
+##                These are charges per house/hotel owned. Recall that a hotel is just a fifth house
+##                Calculate the number of houses/hotels owned by the player
+                houses = 0
+                hotels = 0
+                for Property in properties:
+                    if Property[0] == "property":
+                        if Property[2] == True and Property[3] == currentPlayerIndex:
+##                            This is a property owned by the current player
+                            if Property[7] in [1,2,3,4]:
+##                                This is how many houses on this property
+                                houses += Property[7]
+                            elif Property[7] == 5:
+##                                This represents a hotel on this property
+                                hotels += 1
+                if cardNumber == 7:
+##                    Calculate the cash owed
+                    print("Make general repairs on all of your houses. For each house pay 25 coins. For each hotel pay 100 coins")
+                    cashOwed = 25*houses + 100*hotels
                 else:
-                    print("Pay your insurance premium. 50 coins")
-                    cashOwed = 50
-                if playerCash[currentPlayerIndex] >= cashOwed:
-                    playerCash[currentPlayerIndex] -= cashOwed
-                    print("Player ",currentPlayerIndex, " has paid ",cashOwed," coins to the bank")
-                else:
-                    print("PLAYER ",currentPlayerIndex, " IS BANKRUPT!")
-                    print("The bank received all cash and properties owned by player ",currentPlayerIndex)
-                    playerCash[currentPlayerIndex] = -1
-                    for Property in properties:
-                        if Property[0] in ["property","utility","station"] and Property[2] == True and Property[3] == currentPlayerIndex:
-                            Property[2] = False
-            elif cardNumber == 6:
-                print("Bank error in your favour. Collect 200 coins")
-                playerCash[currentPlayerIndex] += 200
-            elif cardNumber == 7:
-                print("Annuity matures. Collect 100 coins")
-                playerCash[currentPlayerIndex] += 100
-            elif cardNumber == 8:
-                print("You inherit 100 coins")
-                playerCash[currentPlayerIndex] += 100
+##                    Calculate the cash owed
+                    print("You are assessed for street repairs: 40 coins per house, 115 coins per hotel")
+                    cashOwed = 40*houses + 115*hotels
             elif cardNumber == 9:
-                print("From sale of stock you get 50 coins")
-                playerCash[currentPlayerIndex] += 50
+                print("Pay school fees of 150 coins")
+                cashOwed = 150
             elif cardNumber == 10:
-                print("Receive interest on 7% preference shares: 25 coins")
-                playerCash[currentPlayerIndex] += 25
-            elif cardNumber == 11:
-                print("Income tax refund. Collect 20 coins")
-                playerCash[currentPlayerIndex] += 20
-            elif cardNumber == 12:
-                print("You have won second prize in a beauty contest. Collect 10 coins")
-                playerCash[currentPlayerIndex] += 10
-            elif cardNumber == 13:
-                print("It is your birthday. Collect 10 coins from each player")
-##                playerCash[currentPlayerIndex] += 10
-            elif cardNumber == 14:
-                print("Get out of jail free. This card may be kept until needed or sold")
+                print("Drink driving fine of 20 coins")
+                cashOwed = 20
             else:
-                print("Take a Chance")
-##                
-            communityChestDeck.remove(cardNumber)
-            if communityChestDeck == []:
-                for i in range(0,16):
-                    communityChestDeck.append(i)
-    return currentPosition, playerCash, properties, communityChestDeck
-
-def chance(currentPlayerIndex,currentPosition,playerCash,properties,chanceDeck,startPosition):
-    if properties[currentPosition][0] == "card":
-        if properties[currentPosition][1] == "Chance":
-            cardNumber = random.choice(chanceDeck)
-            print("Player ",currentPlayerIndex," picked up a chance")
-            if cardNumber in [0,1,2,3,4,5]:
-                if cardNumber == 0:
-                    print("Advance to Go")
-                    currentPosition = 0
-                elif cardNumber == 1:
-                    print("Go back three spaces")
-                    currentPosition -= 3
-                elif cardNumber == 2:
-                    print("Advance to Pall Mall. If you pass Go, collect 200 coins")
-                    currentPosition = 11
-                elif cardNumber == 3:
-                    print("Take a trip to MaryleboneStation. If you pass Go, collect 200 coins")
-                    currentPosition = 15
-                elif cardNumber == 4:
-                    print("Advance to Trafalgar Square. If you pass Go, collect 200 coins")
-                    currentPosition = 24
-                elif cardNumber == 5:
-                    print("Advance to Mayfair")
-                    currentPosition = 39
-                playerCash = go(playerCash,currentPlayerIndex,currentPosition,startPosition)
-            elif cardNumber == 6:
-                print("Go to Jail. Move directly to jail. Do not pass Go. Do not collect 200 coins")
-                currentPosition = 30        
-            elif cardNumber in [7,8,9,10,11]:
-                if cardNumber in [7,8]:
-                    houses = 0
-                    hotels = 0
-                    for Property in properties:
-                        if Property[0] == "property":
-                            if Property[2] == True:
-                                if Property[3] == currentPlayerIndex:
-                                    if Property[7] in [1,2,3,4]:
-                                        houses += Property7
-                                    elif Property[7] == 5:
-                                        hotels += 1
-                    if cardNumber == 7:
-                        print("Make general repairs on all of your houses. For each house pay 25 coins. For each hotel pay 100 coins")
-                        cashOwed = 25*houses + 100*hotels
-                    else:
-                        print("You are assessed for street repairs: 40 coins per house, 115 coins per hotel")
-                        cashOwed = 40*houses + 115*hotels
-                elif cardNumber == 9:
-                    print("Pay school fees of 150 coins")
-                    cashOwed = 150
-                elif cardNumber == 10:
-                    print("Drink driving fine of 20 coins")
-                    cashOwed = 20
-                else:
-                    print("Speeding fine of 15 coins")
-                    cashOwed = 15
-                if playerCash[currentPlayerIndex] >= cashOwed:
-                    playerCash[currentPlayerIndex] -= cashOwed
-                    print("Player ",currentPlayerIndex, " has paid ",cashOwed," coins to the bank")
-                else:
-                    print("PLAYER ",currentPlayerIndex, " IS BANKRUPT!")
-                    print("The bank received all cash and properties owned by player ",currentPlayerIndex)
-                    playerCash[currentPlayerIndex] = -1
-                    for Property in properties:
-                        if Property[0] in ["property","utility","station"] and Property[2] == True and Property[3] == currentPlayerIndex:
-                            Property[2] = False
-            elif cardNumber == 12:
-                print("Your building loan matures. Recieve 150 coins")
-                playerCash[currentPlayerIndex] += 150
-            elif cardNumber == 13:
-                print("You have won a crossword competition. Collect 100 coins")
-                playerCash[currentPlayerIndex] += 100
-            elif cardNumber == 14:
-                print("Bank pays you dividend of 50 coins")
-                playerCash[currentPlayerIndex] += 50
+                print("Speeding fine of 15 coins")
+                cashOwed = 15
+            if playerCash[currentPlayerIndex] >= cashOwed:
+##                The player can afford the fee, so pays the money to the bank
+                playerCash[currentPlayerIndex] -= cashOwed
+                print("Player ",currentPlayerIndex, " has paid ",cashOwed," coins to the bank")
             else:
-                print("Get out of jail free. This card may be kept until needed or sold")
-            chanceDeck.remove(cardNumber)
-            if chanceDeck == []:
-                for i in range(0,16):
-                    chanceDeck.append(i)
+##                The player cannot afford the fee, so is declared bankrupt and all money and properties are returned to the bank
+                print("PLAYER ",currentPlayerIndex, " IS BANKRUPT!")
+                print("The bank received all cash and properties owned by player ",currentPlayerIndex)
+                playerCash[currentPlayerIndex] = -1
+                for Property in properties:
+                    if Property[0] in ["property","utility","station"] and Property[2] == True and Property[3] == currentPlayerIndex:
+                        Property[2] = False
+        elif cardNumber == 12:
+##            Player receives 150 coins
+            print("Your building loan matures. Recieve 150 coins")
+            playerCash[currentPlayerIndex] += 150
+        elif cardNumber == 13:
+##            Player receives 100 coins
+            print("You have won a crossword competition. Collect 100 coins")
+            playerCash[currentPlayerIndex] += 100
+        elif cardNumber == 14:
+##            Player receives 50 coins
+            print("Bank pays you dividend of 50 coins")
+            playerCash[currentPlayerIndex] += 50
+        else:
+####            To be completed
+            print("Get out of jail free. This card may be kept until needed or sold")
+        chanceDeck.remove(cardNumber)
+##        Remove card which has been resolved. If the deck is now empty, refill with the discard pile.
+        if chanceDeck == []:
+            for i in range(0,16):
+                chanceDeck.append(i)
     return currentPosition, playerCash, properties, chanceDeck
 
+#######################################################################################################################################################################################
+
+#### FUNCTIONS for display purposes
+
+#### The propertyHighlight function will highlight the purchased properties, utilities and stations in the colour of their owner (if owned)
 def propertyHighlight(properties):
+##    First determine a list of properties which are owned, together with their owner identification number
     propertiesOwned = []
     for index in range(0,40):
         Property = properties[index]
@@ -296,6 +445,7 @@ def propertyHighlight(properties):
             if Property[2] == True:
                 propertiesOwned.append([index,Property[3]])
     for Property in propertiesOwned:
+##        For each property in the list, determine the position of the top left corner of the square
         if Property[0] in range(0,10):
             squarePosition = (Property[0]*60,0)
         elif Property[0] in range(10,20):
@@ -304,11 +454,16 @@ def propertyHighlight(properties):
             squarePosition = ((30-Property[0])*60,600)
         else:
             squarePosition = (0, (40-Property[0])*60)
+##        For each property in the list, determine the colour in which the highlight should occur
         propertyColour = propertyColours[Property[1]]
+##        Highlight the property
         pygame.draw.rect(gameDisplay,propertyColour,[squarePosition[0]+1,squarePosition[1]+1,60,60])
-        
+
+#### the playerIconPaste function will draw the playing piece of the given player in the correct position on the board  
 def playerIconPaste(playerIndex,playerPosition):
     counterPosition = [(5,10),(25,10),(45,10),(5,30),(25,30),(45,30)][playerIndex]
+##    The counterPosition is the top left of the counter within the square on the board
+##    The squarePosition is the top left of the square in which the counter should be
     if playerPosition in range(0,10):
         squarePosition = (playerPosition*60,0)
     elif playerPosition in range(10,20):
@@ -317,13 +472,17 @@ def playerIconPaste(playerIndex,playerPosition):
         squarePosition = ((30-playerPosition)*60,600)
     else:
         squarePosition = (0, (40-playerPosition)*60)
+##    The position is the top left of the counter compared with the entire board (display)
     position = (counterPosition[0]+squarePosition[0],
                 counterPosition[1]+squarePosition[1])
+##    Draw the counter
     pygame.draw.rect(gameDisplay,playerColours[playerIndex],[position[0],position[1],10,10])
 
+#### The printProperties function will return (onto the IDE) the properties: first, the owned properties together with their owner; second, the unowned properties
 def printProperties(properties):
     propertiesOwned = []
     propertiesUnowned = []
+##    For each ownable property (/utility/station), put it into the correct list, together with its owner if applicable
     for index in range(0,40):
         Property = properties[index]
         if Property[0] in ["property","station","utility"]:
@@ -331,20 +490,25 @@ def printProperties(properties):
                 propertiesOwned.append([Property[1],Property[3]])
             else:
                 propertiesUnowned.append(Property[1])
+##    Print the lists onto the IDE
     print(propertiesOwned)
     print(propertiesUnowned)
+
+#############################################################################################################################################################################################
+
+#### GAMELOOP FUNCTION
                 
 def gameLoop(numberOfPlayers):
     gameExit = False
     playerPositions = []
     playerCash = []
     jailIndex = []
-    currentPlayerIndex = 0
+##    Give players initial positions, cash and jailIndex
     for i in range(0,numberOfPlayers):
         playerPositions.append(0)
         playerCash.append(1500)
         jailIndex.append(0)
-##    properties = ["type","name",owned,owner,cost,mort?,[0hs,1hs,2hs,3hs,4hs,hotel],noOfHouse]
+##    Set up properties here. This is because it is adapted during the course of the running (house numbers, ownership etc.)
     properties = [["space","Go"],
                   ["property","Old Kent Road",False,0,60,False,[2,10,30,90,160,250],0],
                   ["card","Community Chest"],
@@ -385,24 +549,36 @@ def gameLoop(numberOfPlayers):
                   ["property","Park Lane",False,0,350,False,[35,175,500,1100,1300,1500],0],
                   ["tax","Super Tax",100],
                   ["property","Mayfair",False,0,400,False,[50,200,600,1400,1700,2000],0]]
+##    Set up card decks
     communityChestDeck = []
     chanceDeck = []
     for i in range(0,16):
         communityChestDeck.append(i)
         chanceDeck.append(i)
+####    Setup complete
+####    Begin game
+    currentPlayerIndex = 0
     while not gameExit:
+##        Check whether current player has won i.e. is the only player not bankrupt
         playersRemaining = numberOfPlayers
         for playerMoney in playerCash:
             if playerMoney == -1:
                 playersRemaining -= 1
         if playersRemaining == 1:
+##            If only one player remains, they have won. Currently, we may only quit
             print("Winner!")
             while not gameExit:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         pygame.quit()
                         quit()
-        if playerCash[currentPlayerIndex] != -1:
+        if playerCash[currentPlayerIndex] == -1:
+##            If the current player is bankrupt, move onto the next player
+##            This is easier than removing the player from the playerList since that would require changing the indexes
+            currentPlayerIndex += 1
+            currentPlayerIndex = currentPlayerIndex%numberOfPlayers
+        else:
+##            If the current player is not bankrupt, set the current position
             currentPosition = playerPositions[currentPlayerIndex]
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -410,33 +586,46 @@ def gameLoop(numberOfPlayers):
                     quit()
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_r:
-##                        print("Player ",currentPlayerIndex," starts at ",playerPositions[currentPlayerIndex])
-                        (currentPosition,jailIndex,playerCash,dice) = diceRoll(currentPlayerIndex,currentPosition,jailIndex,playerCash)
+##                        Press "r" for roll to take the player's turn
+##                        Roll the dice and move to new location
+                        (currentPosition,jailIndex,playerCash,properties,dice) = diceRoll(currentPlayerIndex,currentPosition,jailIndex,playerCash,properties)
+##                        Award cash if the player passed Go
                         playerCash = go(playerCash,currentPlayerIndex,currentPosition,playerPositions[currentPlayerIndex])
+##                        Pick up a community chest card, and evaluate
                         (currentPosition,playerCash,properties,communityChestDeck) = communityChest(currentPlayerIndex,currentPosition,playerCash,properties,communityChestDeck)
-                        chanceCommunityChestParameter = 0
+##                        A player may pick up the "Go back 3 spaces" chance card on position 36 and then pick up a community chest, this parameter allows this:
+                        chanceCommunityChestParameter = False
+##                        Test whether the player is on space 36
                         if currentPosition == 36:
-                            chanceCommunityChestParameter += 1
-                        (currentPosition,playerCash,properties,chanceDeck) = chance(currentPlayerIndex,currentPosition,playerCash,properties,chanceDeck,playerPositions[currentPlayerIndex])
-                        if currentPosition == 33 and chanceCommunityChestParameter == 1:
+                            chanceCommunityChestParameter = True
+##                        Pick up a chance card and evaluate
+                        (currentPosition,playerCash,properties,chanceDeck) = chance(currentPlayerIndex,currentPosition,playerCash,properties,chanceDeck)
+##                        If the player has (as a result of chance card ONLY) moved to the community chest, then pick up another community chest
+                        if currentPosition == 33 and chanceCommunityChestParameter == True:
                             (currentPosition,playerCash,properties,communityChestDeck) = communityChest(currentPlayerIndex,currentPosition,playerCash,properties,communityChestDeck)
+##                        Send player to jail if they landed on the "Go to Jail" space (or have been sent to jail by a card)
                         (currentPosition,jailIndex) = goToJail(currentPlayerIndex,currentPosition,jailIndex)
                         print("Player ",currentPlayerIndex," landed on ",properties[currentPosition][1])
+##                        Pay rent if applicable
                         (playerCash,properties) = rent(currentPosition,currentPlayerIndex,playerCash,properties,dice)
+##                        Buy property if applicable
                         (playerCash,properties) = purchase(currentPosition,currentPlayerIndex,playerCash,properties)
+##                        Pay rent if applicable
                         (playerCash,properties) = tax(currentPosition,currentPlayerIndex,playerCash,properties)
-##                        (playerCash,properties) = house(playerPositions,currentPlayerIndex,playerCash,properties)
+##                        Buy houses if applicable
+######                        (playerCash,properties) = house(playerPositions,currentPlayerIndex,playerCash,properties)
+##                        Update player position in player position list
                         playerPositions[currentPlayerIndex] = currentPosition
+##                        Move onto next player
                         currentPlayerIndex += 1
                         currentPlayerIndex = currentPlayerIndex%numberOfPlayers
                     elif event.key == pygame.K_c:
+##                        Press "c" to print Cash to IDE
                         print(playerCash)
                     elif event.key == pygame.K_p:
+##                        Press "p" to print Property ownership to IDE
                         printProperties(properties)
-        else:
-            currentPlayerIndex += 1
-            currentPlayerIndex = currentPlayerIndex%numberOfPlayers
-
+##        Setup board and display to screen
         gameDisplay.fill(whiteBoard)
         propertyHighlight(properties)
         for i in range(0,11):
@@ -447,6 +636,10 @@ def gameLoop(numberOfPlayers):
             if playerCash[playerIndex] != -1:
                 playerIconPaste(playerIndex,playerPositions[playerIndex])
         pygame.display.update()
+
+###########################################################################################################################################################################################
+
+#### CODE RUN
 
 noOfPlayers = int(input("Enter number of players: "))
 gameLoop(noOfPlayers)
